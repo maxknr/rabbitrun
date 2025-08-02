@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Rabbit Runner</title>
     <style>
         body, html {
@@ -11,6 +11,7 @@
             overflow: hidden;
             width: 100%;
             height: 100vh;
+            touch-action: manipulation; /* Prevent double-tap zoom on mobile */
         }
         canvas {
             display: block;
@@ -25,10 +26,15 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Set canvas to full screen
+        // Set canvas to full screen with device pixel ratio for mobile
         function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+            ctx.scale(dpr, dpr);
+            console.log('Canvas resized: DPR=', dpr, 'Width=', canvas.width, 'Height=', canvas.height);
         }
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
@@ -38,15 +44,31 @@
         let jumpSound, crashSound, coinSound, levelUpSound;
         let isAudioInitialized = false;
         let isBackgroundMusicPlaying = false;
+
         function initializeAudio() {
             if (!isAudioInitialized) {
                 try {
-                    backgroundMusicLevel1 = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/bglevel1.mp3');
-                    backgroundMusicLevel2 = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/bglevel2.mp3');
-                    jumpSound = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/jump.mp3');
-                    crashSound = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/crash.mp3');
-                    coinSound = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/coin.mp3');
-                    levelUpSound = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/levelup.mp3');
+                    backgroundMusicLevel1 = new Audio('sound/bglevel1.mp3');
+                    backgroundMusicLevel2 = new Audio('sound/bglevel2.mp3');
+                    jumpSound = new Audio('sound/jump.mp3');
+                    crashSound = new Audio('sound/crash.mp3');
+                    coinSound = new Audio('sound/coin.mp3');
+                    levelUpSound = new Audio('sound/levelup.mp3');
+
+                    // Add error event listeners for debugging
+                    const audioFiles = {
+                        bglevel1: backgroundMusicLevel1,
+                        bglevel2: backgroundMusicLevel2,
+                        jump: jumpSound,
+                        crash: crashSound,
+                        coin: coinSound,
+                        levelup: levelUpSound
+                    };
+                    for (const [name, audio] of Object.entries(audioFiles)) {
+                        audio.onerror = () => console.error(`Failed to load audio: ${name} (${audio.src}). Check if file exists at https://maxknr.github.io/rabbitrun/sound/${name}.mp3`);
+                        audio.oncanplay = () => console.log(`Audio loaded successfully: ${name} (${audio.src})`);
+                    }
+
                     console.log('Audio initialized:', {
                         bglevel1: backgroundMusicLevel1.src,
                         bglevel2: backgroundMusicLevel2.src,
@@ -55,6 +77,7 @@
                         coin: coinSound.src,
                         levelup: levelUpSound.src
                     });
+
                     backgroundMusicLevel1.loop = true;
                     backgroundMusicLevel2.loop = true;
                     backgroundMusicLevel1.volume = 0.2;
@@ -66,7 +89,7 @@
                     currentBackgroundMusic = backgroundMusicLevel1;
                     isAudioInitialized = true;
                 } catch (e) {
-                    console.error('Audio failed to load:', e);
+                    console.error('Audio initialization failed:', e);
                     backgroundMusicLevel1 = { play: () => {}, pause: () => {} };
                     backgroundMusicLevel2 = { play: () => {}, pause: () => {} };
                     currentBackgroundMusic = backgroundMusicLevel1;
@@ -81,7 +104,6 @@
         // Function to switch and play background music
         function playBackgroundMusic(level) {
             try {
-                // Only play if not already playing or if switching levels
                 if (!isBackgroundMusicPlaying || currentBackgroundMusic !== (level === 1 ? backgroundMusicLevel1 : backgroundMusicLevel2)) {
                     currentBackgroundMusic.pause();
                     currentBackgroundMusic.currentTime = 0; // Reset only when switching tracks
@@ -122,8 +144,8 @@
         // Cloud generation (regular clouds)
         function spawnCloud() {
             let cloud = {
-                x: canvas.width,
-                y: Math.random() * (canvas.height / 2 - 50) + 50,
+                x: canvas.width / (window.devicePixelRatio || 1),
+                y: Math.random() * (canvas.height / (window.devicePixelRatio || 1) / 2 - 50) + 50,
                 width: Math.random() * 50 + 50,
                 height: Math.random() * 20 + 20,
                 speed: Math.random() * 2 + 1
@@ -135,7 +157,7 @@
         function spawnCoinCloud() {
             let maxJumpHeight = groundY - (rabbit.jumpForce * rabbit.jumpForce) / (2 * gravity);
             let coinCloud = {
-                x: canvas.width,
+                x: canvas.width / (window.devicePixelRatio || 1),
                 y: maxJumpHeight + Math.random() * 50 + 50,
                 width: 60,
                 height: 30,
@@ -147,7 +169,7 @@
 
         // Draw sky background with gradient based on level
         function drawSky() {
-            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height / (window.devicePixelRatio || 1));
             if (level === 1) {
                 gradient.addColorStop(0, '#87CEEB');
                 gradient.addColorStop(1, '#1E90FF');
@@ -156,7 +178,7 @@
                 gradient.addColorStop(1, '#800080');
             }
             ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillRect(0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
         }
 
         // Draw regular clouds
@@ -186,7 +208,7 @@
                     ctx.arc(coinCloud.x, coinCloud.y, 10, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.fillStyle = '#000000';
-                    ctx.font = '12px Arial';
+                    ctx.font = `12px Arial`;
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.fillText('C', coinCloud.x, coinCloud.y);
@@ -288,7 +310,7 @@
         // Obstacle generation
         function spawnObstacle() {
             let obstacle = {
-                x: canvas.width,
+                x: canvas.width / (window.devicePixelRatio || 1),
                 y: groundY,
                 width: level === 1 ? 20 : 30,
                 height: level === 1 ? 40 : 30
@@ -299,14 +321,15 @@
         // Draw splash screen
         function drawSplashScreen() {
             ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillRect(0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = '40px Arial';
+            ctx.font = `40px Arial`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('Level 2 Unlocked! Bonus: 1000 Points', canvas.width / 2, canvas.height / 2);
+            ctx.fillText('Level 2 Unlocked! Bonus: 1000 Points', (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2);
             if (isAudioInitialized && splashScreenTimer >= 2900) {
                 try {
+                    console.log('Attempting to play level up sound:', levelUpSound.src);
                     levelUpSound.play().catch(e => console.error('Level up sound failed to play:', e));
                 } catch (e) {
                     console.error('Level up sound failed to play:', e);
@@ -322,9 +345,10 @@
         function gameLoop(timestamp) {
             if (gameOver) {
                 ctx.fillStyle = 'black';
-                ctx.font = '30px Arial';
-                ctx.fillText('Game Over! Score: ' + Math.floor(score), canvas.width / 2 - 100, canvas.height / 2);
-                ctx.fillText('Press SPACE to restart', canvas.width / 2 - 100, canvas.height / 2 + 40);
+                ctx.font = `30px Arial`;
+                ctx.textAlign = 'center';
+                ctx.fillText('Game Over! Score: ' + Math.floor(score), (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2);
+                ctx.fillText('Tap or press SPACE to restart', (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 + 40);
                 try {
                     currentBackgroundMusic.pause();
                     isBackgroundMusicPlaying = false;
@@ -363,6 +387,7 @@
                         scoreFlash = 30;
                         if (isAudioInitialized) {
                             try {
+                                console.log('Attempting to play coin sound:', coinSound.src);
                                 coinSound.play().catch(e => console.error('Coin sound failed to play:', e));
                             } catch (e) {
                                 console.error('Coin sound failed to play:', e);
@@ -371,9 +396,9 @@
                     }
                 });
 
-                groundY = canvas.height - 50;
+                groundY = (canvas.height / (window.devicePixelRatio || 1)) - 50;
                 ctx.fillStyle = '#654321';
-                ctx.fillRect(0, groundY, canvas.width, 50);
+                ctx.fillRect(0, groundY, canvas.width / (window.devicePixelRatio || 1), 50);
 
                 rabbit.y = Math.min(rabbit.y + rabbit.velocityY, groundY - rabbit.height / 2);
                 rabbit.velocityY += gravity;
@@ -399,6 +424,7 @@
                         gameOver = true;
                         if (isAudioInitialized) {
                             try {
+                                console.log('Attempting to play crash sound:', crashSound.src);
                                 crashSound.play().catch(e => console.error('Crash sound failed to play:', e));
                             } catch (e) {
                                 console.error('Crash sound failed to play:', e);
@@ -438,7 +464,7 @@
                 }
             }
 
-            ctx.font = '30px Arial';
+            ctx.font = `30px Arial`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
             if (scoreFlash > 0) {
@@ -453,42 +479,54 @@
             requestAnimationFrame(gameLoop);
         }
 
-        // Input handling
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
-                if (gameOver) {
-                    obstacles = [];
-                    clouds = [];
-                    coinClouds = [];
-                    score = 0;
-                    gameSpeed = 5;
-                    obstacleSpawnInterval = 1500;
-                    level = 1;
-                    gameOver = false;
-                    showSplashScreen = false;
-                    rabbit.y = groundY - rabbit.height / 2;
-                    rabbit.velocityY = 0;
-                    scoreFlash = 0;
-                    if (isAudioInitialized) {
-                        playBackgroundMusic(1);
-                    }
-                    requestAnimationFrame(gameLoop);
-                } else if (!rabbit.isJumping && !showSplashScreen) {
-                    rabbit.velocityY = -rabbit.jumpForce;
-                    rabbit.isJumping = true;
-                    initializeAudio();
-                    if (!isBackgroundMusicPlaying) {
-                        playBackgroundMusic(level);
-                    }
-                    if (isAudioInitialized) {
-                        try {
-                            jumpSound.play().catch(e => console.error('Jump sound failed to play:', e));
-                        } catch (e) {
-                            console.error('Jump sound failed to play:', e);
-                        }
+        // Input handling (keyboard and touch)
+        function handleInput() {
+            if (gameOver) {
+                obstacles = [];
+                clouds = [];
+                coinClouds = [];
+                score = 0;
+                gameSpeed = 5;
+                obstacleSpawnInterval = 1500;
+                level = 1;
+                gameOver = false;
+                showSplashScreen = false;
+                rabbit.y = groundY - rabbit.height / 2;
+                rabbit.velocityY = 0;
+                scoreFlash = 0;
+                if (isAudioInitialized) {
+                    playBackgroundMusic(1);
+                }
+                requestAnimationFrame(gameLoop);
+            } else if (!rabbit.isJumping && !showSplashScreen) {
+                rabbit.velocityY = -rabbit.jumpForce;
+                rabbit.isJumping = true;
+                initializeAudio();
+                if (!isBackgroundMusicPlaying) {
+                    playBackgroundMusic(level);
+                }
+                if (isAudioInitialized) {
+                    try {
+                        console.log('Attempting to play jump sound:', jumpSound.src);
+                        jumpSound.play().catch(e => console.error('Jump sound failed to play:', e));
+                    } catch (e) {
+                        console.error('Jump sound failed to play:', e);
                     }
                 }
             }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault(); // Prevent scrolling on space
+                handleInput();
+            }
+        });
+
+        document.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevent default touch behavior
+            console.log('Touchstart triggered');
+            handleInput();
         });
 
         // Start game
