@@ -1,43 +1,4 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -72,27 +33,65 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // Background music setup
-        let backgroundMusic;
-        let isMusicInitialized = false;
-        try {
-            backgroundMusic = new Audio('https://cdn.pixabay.com/audio/2022/08/02/audio_dcd3b59640.mp3'); // Arcade-style music from Pixabay
-            backgroundMusic.loop = true; // Loop the music
-            backgroundMusic.volume = 0.2; // Low volume
-        } catch (e) {
-            console.error('Background music failed to load:', e);
-            backgroundMusic = { play: () => {}, pause: () => {} }; // Fallback
+        // Audio setup
+        let backgroundMusicLevel1, backgroundMusicLevel2, currentBackgroundMusic;
+        let jumpSound, crashSound, coinSound, levelUpSound;
+        let isAudioInitialized = false;
+        let isBackgroundMusicPlaying = false;
+        function initializeAudio() {
+            if (!isAudioInitialized) {
+                try {
+                    backgroundMusicLevel1 = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/bglevel1.mp3');
+                    backgroundMusicLevel2 = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/bglevel2.mp3');
+                    jumpSound = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/jump.mp3');
+                    crashSound = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/crash.mp3');
+                    coinSound = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/coin.mp3');
+                    levelUpSound = new Audio('https://raw.githubusercontent.com/maxknr/rabbitrun/main/sound/levelup.mp3');
+                    console.log('Audio initialized:', {
+                        bglevel1: backgroundMusicLevel1.src,
+                        bglevel2: backgroundMusicLevel2.src,
+                        jump: jumpSound.src,
+                        crash: crashSound.src,
+                        coin: coinSound.src,
+                        levelup: levelUpSound.src
+                    });
+                    backgroundMusicLevel1.loop = true;
+                    backgroundMusicLevel2.loop = true;
+                    backgroundMusicLevel1.volume = 0.2;
+                    backgroundMusicLevel2.volume = 0.2;
+                    jumpSound.volume = 0.5;
+                    crashSound.volume = 0.5;
+                    coinSound.volume = 0.5;
+                    levelUpSound.volume = 0.5;
+                    currentBackgroundMusic = backgroundMusicLevel1;
+                    isAudioInitialized = true;
+                } catch (e) {
+                    console.error('Audio failed to load:', e);
+                    backgroundMusicLevel1 = { play: () => {}, pause: () => {} };
+                    backgroundMusicLevel2 = { play: () => {}, pause: () => {} };
+                    currentBackgroundMusic = backgroundMusicLevel1;
+                    jumpSound = { play: () => {} };
+                    crashSound = { play: () => {} };
+                    coinSound = { play: () => {} };
+                    levelUpSound = { play: () => {} };
+                }
+            }
         }
 
-        // Function to play music after user interaction
-        function playBackgroundMusic() {
-            if (!isMusicInitialized) {
-                try {
-                    backgroundMusic.play().catch(e => console.error('Background music failed to play:', e));
-                    isMusicInitialized = true;
-                } catch (e) {
-                    console.error('Background music failed to play:', e);
+        // Function to switch and play background music
+        function playBackgroundMusic(level) {
+            try {
+                // Only play if not already playing or if switching levels
+                if (!isBackgroundMusicPlaying || currentBackgroundMusic !== (level === 1 ? backgroundMusicLevel1 : backgroundMusicLevel2)) {
+                    currentBackgroundMusic.pause();
+                    currentBackgroundMusic.currentTime = 0; // Reset only when switching tracks
+                    currentBackgroundMusic = (level === 1) ? backgroundMusicLevel1 : backgroundMusicLevel2;
+                    console.log('Playing background music for level', level, ':', currentBackgroundMusic.src);
+                    currentBackgroundMusic.play().catch(e => console.error('Background music failed to play:', e));
+                    isBackgroundMusicPlaying = true;
                 }
+            } catch (e) {
+                console.error('Background music failed to play:', e);
             }
         }
 
@@ -114,11 +113,11 @@
         let gameSpeed = 5;
         let gameOver = false;
         let groundY = 0;
-        let scoreFlash = 0; // For flashing score effect
-        let level = 1; // Start at level 1
-        let showSplashScreen = false; // Control splash screen display
-        let splashScreenTimer = 0; // Timer for splash screen duration
-        let obstacleSpawnInterval = 1500; // Initial obstacle spawn interval (ms)
+        let scoreFlash = 0;
+        let level = 1;
+        let showSplashScreen = false;
+        let splashScreenTimer = 0;
+        let obstacleSpawnInterval = 1500;
 
         // Cloud generation (regular clouds)
         function spawnCloud() {
@@ -134,10 +133,10 @@
 
         // Coin cloud generation
         function spawnCoinCloud() {
-            let maxJumpHeight = groundY - (rabbit.jumpForce * rabbit.jumpForce) / (2 * gravity); // Approx max jump height
+            let maxJumpHeight = groundY - (rabbit.jumpForce * rabbit.jumpForce) / (2 * gravity);
             let coinCloud = {
                 x: canvas.width,
-                y: maxJumpHeight + Math.random() * 50 + 50, // Within jump range
+                y: maxJumpHeight + Math.random() * 50 + 50,
                 width: 60,
                 height: 30,
                 speed: Math.random() * 1 + 1,
@@ -150,11 +149,11 @@
         function drawSky() {
             const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
             if (level === 1) {
-                gradient.addColorStop(0, '#87CEEB'); // Light blue
-                gradient.addColorStop(1, '#1E90FF'); // Darker blue
+                gradient.addColorStop(0, '#87CEEB');
+                gradient.addColorStop(1, '#1E90FF');
             } else {
-                gradient.addColorStop(0, '#FF4500'); // Orange (sunset)
-                gradient.addColorStop(1, '#800080'); // Purple
+                gradient.addColorStop(0, '#FF4500');
+                gradient.addColorStop(1, '#800080');
             }
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -178,12 +177,10 @@
         function drawCoinClouds() {
             coinClouds.forEach((coinCloud, index) => {
                 if (coinCloud.hasCoin) {
-                    // Golden cloud
                     ctx.fillStyle = 'rgba(255, 215, 0, 0.7)';
                     ctx.beginPath();
                     ctx.ellipse(coinCloud.x, coinCloud.y, coinCloud.width / 2, coinCloud.height / 2, 0, 0, Math.PI * 2);
                     ctx.fill();
-                    // Coin (yellow circle with 'C')
                     ctx.fillStyle = '#FFD700';
                     ctx.beginPath();
                     ctx.arc(coinCloud.x, coinCloud.y, 10, 0, Math.PI * 2);
@@ -203,19 +200,14 @@
 
         // Rabbit drawing
         function drawRabbit() {
-            // Body (rounded, slightly oval)
-            ctx.fillStyle = '#8B4513'; // Brown fur
+            ctx.fillStyle = '#8B4513';
             ctx.beginPath();
             ctx.ellipse(rabbit.x, rabbit.y, rabbit.width / 2, rabbit.height / 1.5, 0, 0, Math.PI * 2);
             ctx.fill();
-
-            // Head (smaller circle)
             ctx.fillStyle = '#8B4513';
             ctx.beginPath();
             ctx.arc(rabbit.x, rabbit.y - rabbit.height / 2, rabbit.width / 3, 0, Math.PI * 2);
             ctx.fill();
-
-            // Ears (longer, curved)
             ctx.fillStyle = '#8B4513';
             ctx.beginPath();
             ctx.moveTo(rabbit.x - 10, rabbit.y - rabbit.height / 1.5);
@@ -227,7 +219,6 @@
             ctx.quadraticCurveTo(rabbit.x + 15, rabbit.y - rabbit.height - 10, rabbit.x + 10, rabbit.y - rabbit.height - 20);
             ctx.quadraticCurveTo(rabbit.x + 5, rabbit.y - rabbit.height - 10, rabbit.x + 5, rabbit.y - rabbit.height / 1.5);
             ctx.fill();
-            // Inner ear (pink)
             ctx.fillStyle = '#FFB6C1';
             ctx.beginPath();
             ctx.moveTo(rabbit.x - 8, rabbit.y - rabbit.height / 1.5);
@@ -239,8 +230,6 @@
             ctx.quadraticCurveTo(rabbit.x + 13, rabbit.y - rabbit.height - 8, rabbit.x + 8, rabbit.y - rabbit.height - 15);
             ctx.quadraticCurveTo(rabbit.x + 3, rabbit.y - rabbit.height - 8, rabbit.x + 3, rabbit.y - rabbit.height / 1.5);
             ctx.fill();
-
-            // Eyes (white with black pupils)
             ctx.fillStyle = '#FFFFFF';
             ctx.beginPath();
             ctx.arc(rabbit.x - 8, rabbit.y - rabbit.height / 1.8, 5, 0, Math.PI * 2);
@@ -251,8 +240,6 @@
             ctx.arc(rabbit.x - 8, rabbit.y - rabbit.height / 1.8, 2, 0, Math.PI * 2);
             ctx.arc(rabbit.x + 8, rabbit.y - rabbit.height / 1.8, 2, 0, Math.PI * 2);
             ctx.fill();
-
-            // Nose (small pink triangle)
             ctx.fillStyle = '#FFB6C1';
             ctx.beginPath();
             ctx.moveTo(rabbit.x, rabbit.y - rabbit.height / 2);
@@ -260,8 +247,6 @@
             ctx.lineTo(rabbit.x + 3, rabbit.y - rabbit.height / 2 + 5);
             ctx.closePath();
             ctx.fill();
-
-            // Whiskers
             ctx.strokeStyle = '#000000';
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -274,8 +259,6 @@
             ctx.moveTo(rabbit.x + 5, rabbit.y - rabbit.height / 2 + 3);
             ctx.lineTo(rabbit.x + 13, rabbit.y - rabbit.height / 2 + 3);
             ctx.stroke();
-
-            // Tail (small white puff)
             ctx.fillStyle = '#FFFFFF';
             ctx.beginPath();
             ctx.arc(rabbit.x + rabbit.width / 2 - 5, rabbit.y + rabbit.height / 4, 8, 0, Math.PI * 2);
@@ -285,22 +268,19 @@
         // Obstacle drawing (carrots for level 1, rocks for level 2)
         function drawObstacle(x, y, width, height) {
             if (level === 1) {
-                // Carrot for level 1
-                ctx.fillStyle = '#FFA500'; // Orange carrot
+                ctx.fillStyle = '#FFA500';
                 ctx.beginPath();
                 ctx.moveTo(x, y);
                 ctx.lineTo(x + width / 2, y - height);
                 ctx.lineTo(x + width, y);
                 ctx.closePath();
                 ctx.fill();
-                // Green top
                 ctx.fillStyle = '#008000';
                 ctx.fillRect(x + width / 4, y - height - 10, width / 2, 10);
             } else {
-                // Rock for level 2
-                ctx.fillStyle = '#808080'; // Gray rock
+                ctx.fillStyle = '#808080';
                 ctx.beginPath();
-                ctx.roundRect(x, y - height, width, height, 5); // Rounded rectangle
+                ctx.roundRect(x, y - height, width, height, 5);
                 ctx.fill();
             }
         }
@@ -310,21 +290,28 @@
             let obstacle = {
                 x: canvas.width,
                 y: groundY,
-                width: level === 1 ? 20 : 30, // Wider for rocks in level 2
-                height: level === 1 ? 40 : 30 // Shorter for rocks in level 2
+                width: level === 1 ? 20 : 30,
+                height: level === 1 ? 40 : 30
             };
             obstacles.push(obstacle);
         }
 
         // Draw splash screen
         function drawSplashScreen() {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; // Semi-transparent black background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#FFFFFF';
             ctx.font = '40px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('Level 2 Unlocked! Bonus: 1000 Points', canvas.width / 2, canvas.height / 2);
+            if (isAudioInitialized && splashScreenTimer >= 2900) {
+                try {
+                    levelUpSound.play().catch(e => console.error('Level up sound failed to play:', e));
+                } catch (e) {
+                    console.error('Level up sound failed to play:', e);
+                }
+            }
         }
 
         // Game loop
@@ -339,7 +326,8 @@
                 ctx.fillText('Game Over! Score: ' + Math.floor(score), canvas.width / 2 - 100, canvas.height / 2);
                 ctx.fillText('Press SPACE to restart', canvas.width / 2 - 100, canvas.height / 2 + 40);
                 try {
-                    backgroundMusic.pause(); // Pause music on game over
+                    currentBackgroundMusic.pause();
+                    isBackgroundMusicPlaying = false;
                 } catch (e) {
                     console.error('Failed to pause music:', e);
                 }
@@ -348,7 +336,6 @@
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw sky and clouds
             drawSky();
             if (!showSplashScreen) {
                 cloudTimer += timestamp - lastTime;
@@ -358,7 +345,6 @@
                 }
                 drawClouds();
 
-                // Draw and update coin clouds
                 coinCloudTimer += timestamp - lastTime;
                 if (coinCloudTimer > 5000) {
                     spawnCoinCloud();
@@ -372,18 +358,23 @@
                         rabbit.y + rabbit.height / 2 > coinCloud.y - coinCloud.height / 2 &&
                         rabbit.y - rabbit.height / 2 < coinCloud.y + coinCloud.height / 2
                     ) {
-                        coinCloud.hasCoin = false; // Coin collected
-                        score += 50; // Extra points for coin
-                        scoreFlash = 30; // Trigger flash effect
+                        coinCloud.hasCoin = false;
+                        score += 50;
+                        scoreFlash = 30;
+                        if (isAudioInitialized) {
+                            try {
+                                coinSound.play().catch(e => console.error('Coin sound failed to play:', e));
+                            } catch (e) {
+                                console.error('Coin sound failed to play:', e);
+                            }
+                        }
                     }
                 });
 
-                // Ground
                 groundY = canvas.height - 50;
                 ctx.fillStyle = '#654321';
                 ctx.fillRect(0, groundY, canvas.width, 50);
 
-                // Update rabbit
                 rabbit.y = Math.min(rabbit.y + rabbit.velocityY, groundY - rabbit.height / 2);
                 rabbit.velocityY += gravity;
                 if (rabbit.y >= groundY - rabbit.height / 2) {
@@ -392,7 +383,6 @@
                 }
                 drawRabbit();
 
-                // Update obstacles
                 obstacleTimer += timestamp - lastTime;
                 if (obstacleTimer > obstacleSpawnInterval) {
                     spawnObstacle();
@@ -401,38 +391,45 @@
                 obstacles.forEach((obstacle, index) => {
                     obstacle.x -= gameSpeed;
                     drawObstacle(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
-                    // Collision detection with obstacle
                     if (
                         rabbit.x + rabbit.width / 2 > obstacle.x &&
                         rabbit.x - rabbit.width / 2 < obstacle.x + obstacle.width &&
                         rabbit.y + rabbit.height / 2 > obstacle.y - obstacle.height
                     ) {
                         gameOver = true;
+                        if (isAudioInitialized) {
+                            try {
+                                crashSound.play().catch(e => console.error('Crash sound failed to play:', e));
+                            } catch (e) {
+                                console.error('Crash sound failed to play:', e);
+                            }
+                        }
                     }
                     if (obstacle.x < -obstacle.width) {
                         obstacles.splice(index, 1);
-                        score += 10; // Increment score for passing obstacle
-                        scoreFlash = 30; // Trigger flash effect
+                        score += 10;
+                        scoreFlash = 30;
                     }
                 });
             }
 
-            // Check for level transition
             if (score >= 500 && level === 1 && !showSplashScreen) {
                 showSplashScreen = true;
-                splashScreenTimer = 3000; // Display splash screen for 3 seconds
-                score += 1000; // Add bonus points
-                level = 2; // Move to level 2
-                gameSpeed = 7; // Increase difficulty
-                obstacleSpawnInterval = 1200; // More frequent obstacles
-                obstacles = []; // Clear obstacles
-                coinClouds = []; // Clear coin clouds
-                rabbit.y = groundY - rabbit.height / 2; // Reset rabbit position
+                splashScreenTimer = 3000;
+                score += 1000;
+                level = 2;
+                gameSpeed = 7;
+                obstacleSpawnInterval = 1200;
+                obstacles = [];
+                coinClouds = [];
+                rabbit.y = groundY - rabbit.height / 2;
                 rabbit.velocityY = 0;
                 rabbit.isJumping = false;
+                if (isAudioInitialized) {
+                    playBackgroundMusic(2);
+                }
             }
 
-            // Handle splash screen
             if (showSplashScreen) {
                 drawSplashScreen();
                 splashScreenTimer -= timestamp - lastTime;
@@ -441,12 +438,11 @@
                 }
             }
 
-            // Score display with flash effect
             ctx.font = '30px Arial';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
             if (scoreFlash > 0) {
-                ctx.fillStyle = scoreFlash % 10 < 5 ? '#FF0000' : '#000000'; // Flash red/black
+                ctx.fillStyle = scoreFlash % 10 < 5 ? '#FF0000' : '#000000';
                 scoreFlash--;
             } else {
                 ctx.fillStyle = '#000000';
@@ -461,25 +457,36 @@
         document.addEventListener('keydown', (e) => {
             if (e.code === 'Space') {
                 if (gameOver) {
-                    // Restart game
                     obstacles = [];
                     clouds = [];
                     coinClouds = [];
                     score = 0;
                     gameSpeed = 5;
                     obstacleSpawnInterval = 1500;
-                    level = 1; // Reset to level 1
+                    level = 1;
                     gameOver = false;
                     showSplashScreen = false;
                     rabbit.y = groundY - rabbit.height / 2;
                     rabbit.velocityY = 0;
                     scoreFlash = 0;
-                    playBackgroundMusic(); // Resume music on restart
+                    if (isAudioInitialized) {
+                        playBackgroundMusic(1);
+                    }
                     requestAnimationFrame(gameLoop);
                 } else if (!rabbit.isJumping && !showSplashScreen) {
                     rabbit.velocityY = -rabbit.jumpForce;
                     rabbit.isJumping = true;
-                    playBackgroundMusic(); // Start music on first jump
+                    initializeAudio();
+                    if (!isBackgroundMusicPlaying) {
+                        playBackgroundMusic(level);
+                    }
+                    if (isAudioInitialized) {
+                        try {
+                            jumpSound.play().catch(e => console.error('Jump sound failed to play:', e));
+                        } catch (e) {
+                            console.error('Jump sound failed to play:', e);
+                        }
+                    }
                 }
             }
         });
