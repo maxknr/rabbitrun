@@ -1,43 +1,4 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -52,7 +13,7 @@
             overflow: hidden;
             width: 100%;
             height: 100vh;
-            touch-action: manipulation; /* Prevent double-tap zoom on mobile */
+            touch-action: manipulation;
         }
         canvas {
             display: block;
@@ -67,7 +28,6 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Set canvas to full screen with device pixel ratio for mobile
         function resizeCanvas() {
             const dpr = window.devicePixelRatio || 1;
             canvas.width = window.innerWidth * dpr;
@@ -80,18 +40,16 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // Request fullscreen on mobile
         function requestFullscreen() {
             if (document.documentElement.requestFullscreen) {
                 document.documentElement.requestFullscreen().catch(e => console.error('Fullscreen request failed:', e));
-            } else if (document.documentElement.webkitRequestFullscreen) { // iOS Safari
+            } else if (document.documentElement.webkitRequestFullscreen) {
                 document.documentElement.webkitRequestFullscreen().catch(e => console.error('Fullscreen request failed:', e));
             }
             console.log('Requested fullscreen mode');
         }
 
-        // Audio setup
-        let backgroundMusicLevel1, backgroundMusicLevel2, currentBackgroundMusic;
+        let backgroundMusicLevel1, currentBackgroundMusic;
         let jumpSound, crashSound, coinSound, levelUpSound;
         let isAudioInitialized = false;
         let isBackgroundMusicPlaying = false;
@@ -100,16 +58,13 @@
             if (!isAudioInitialized) {
                 try {
                     backgroundMusicLevel1 = new Audio('sound/bglevel1.mp3');
-                    backgroundMusicLevel2 = new Audio('sound/bglevel2.mp3');
                     jumpSound = new Audio('sound/jump.mp3');
                     crashSound = new Audio('sound/crash.mp3');
                     coinSound = new Audio('sound/coin.mp3');
                     levelUpSound = new Audio('sound/levelup.mp3');
 
-                    // Add error event listeners for debugging
                     const audioFiles = {
                         bglevel1: backgroundMusicLevel1,
-                        bglevel2: backgroundMusicLevel2,
                         jump: jumpSound,
                         crash: crashSound,
                         coin: coinSound,
@@ -122,7 +77,6 @@
 
                     console.log('Audio initialized:', {
                         bglevel1: backgroundMusicLevel1.src,
-                        bglevel2: backgroundMusicLevel2.src,
                         jump: jumpSound.src,
                         crash: crashSound.src,
                         coin: coinSound.src,
@@ -130,9 +84,7 @@
                     });
 
                     backgroundMusicLevel1.loop = true;
-                    backgroundMusicLevel2.loop = true;
                     backgroundMusicLevel1.volume = 0.2;
-                    backgroundMusicLevel2.volume = 0.2;
                     jumpSound.volume = 0.5;
                     crashSound.volume = 0.5;
                     coinSound.volume = 0.5;
@@ -142,7 +94,6 @@
                 } catch (e) {
                     console.error('Audio initialization failed:', e);
                     backgroundMusicLevel1 = { play: () => {}, pause: () => {} };
-                    backgroundMusicLevel2 = { play: () => {}, pause: () => {} };
                     currentBackgroundMusic = backgroundMusicLevel1;
                     jumpSound = { play: () => {} };
                     crashSound = { play: () => {} };
@@ -152,14 +103,12 @@
             }
         }
 
-        // Function to switch and play background music
-        function playBackgroundMusic(level) {
+        function playBackgroundMusic() {
             try {
-                if (!isBackgroundMusicPlaying || currentBackgroundMusic !== (level === 1 ? backgroundMusicLevel1 : backgroundMusicLevel2)) {
+                if (!isBackgroundMusicPlaying) {
                     currentBackgroundMusic.pause();
-                    currentBackgroundMusic.currentTime = 0; // Reset only when switching tracks
-                    currentBackgroundMusic = (level === 1) ? backgroundMusicLevel1 : backgroundMusicLevel2;
-                    console.log('Playing background music for level', level, ':', currentBackgroundMusic.src);
+                    currentBackgroundMusic.currentTime = 0;
+                    console.log('Playing background music:', currentBackgroundMusic.src);
                     currentBackgroundMusic.play().catch(e => console.error('Background music failed to play:', e));
                     isBackgroundMusicPlaying = true;
                 }
@@ -168,71 +117,125 @@
             }
         }
 
-        // Game variables
-        let rabbit = {
-            x: 50,
-            y: 0,
-            width: 50,
-            height: 50,
-            jumpForce: 15,
-            velocityY: 0,
-            isJumping: false
-        };
+        let username = localStorage.getItem('rabbitRunnerUsername') || prompt('Enter your username (or press OK for Guest):') || 'Guest';
+        localStorage.setItem('rabbitRunnerUsername', username);
+
+        let highScores = JSON.parse(localStorage.getItem(`highScores_${username}`)) || { 1: 0, 2: 0, 3: 0, 4: 0 };
+        let selectedAvatar = parseInt(localStorage.getItem('rabbitRunnerAvatar')) || 1; // Default to Avatar 1
+
+        let rabbit = { x: 50, y: 0, width: 50, height: 50, jumpForce: 15, velocityY: 0, isJumping: false, avatar: selectedAvatar };
         let gravity = 0.6;
         let obstacles = [];
         let clouds = [];
         let coinClouds = [];
+        let debris = [];
+        let eagles = [];
+        let barrels = [];
+        let gaps = [];
+        let thunderShocks = [];
         let score = 0;
+        let level2Score = 0;
+        let level3Score = 0;
         let gameSpeed = 5;
         let gameOver = false;
         let groundY = 0;
         let scoreFlash = 0;
         let level = 1;
-        let showSplashScreen = false;
-        let splashScreenTimer = 0;
+        let lives = 2;
+        let showSplashScreen = true; // Start with splash screen
+        let splashScreenTimer = 3000;
         let obstacleSpawnInterval = 1500;
+        let lastLightning = 0;
+        let lightningDuration = 0;
+        let eagleTimer = 0;
+        let barrelTimer = 0;
+        let gapTimer = 0;
+        let thunderTimer = 0;
 
-        // Cloud generation (regular clouds)
         function spawnCloud() {
-            let cloud = {
-                x: canvas.width / (window.devicePixelRatio || 1),
-                y: Math.random() * (canvas.height / (window.devicePixelRatio || 1) / 2 - 50) + 50,
-                width: Math.random() * 50 + 50,
-                height: Math.random() * 20 + 20,
-                speed: Math.random() * 2 + 1
-            };
+            let cloud = { x: canvas.width / (window.devicePixelRatio || 1), y: Math.random() * (canvas.height / (window.devicePixelRatio || 1) / 2 - 50) + 50, width: Math.random() * 50 + 50, height: Math.random() * 20 + 20, speed: Math.random() * 2 + 1 };
             clouds.push(cloud);
         }
 
-        // Coin cloud generation
         function spawnCoinCloud() {
             let maxJumpHeight = groundY - (rabbit.jumpForce * rabbit.jumpForce) / (2 * gravity);
-            let coinCloud = {
-                x: canvas.width / (window.devicePixelRatio || 1),
-                y: maxJumpHeight + Math.random() * 50 + 50,
-                width: 60,
-                height: 30,
-                speed: Math.random() * 1 + 1,
-                hasCoin: true
-            };
+            let coinCloud = { x: canvas.width / (window.devicePixelRatio || 1), y: maxJumpHeight + Math.random() * 50 + 50, width: 60, height: 30, speed: Math.random() * 1 + 1, hasCoin: true };
             coinClouds.push(coinCloud);
         }
 
-        // Draw sky background with gradient based on level
+        function spawnDebris() {
+            let debrisItem = { x: Math.random() * (canvas.width / (window.devicePixelRatio || 1)), y: 0, width: 30, height: 30, speed: 3, lifetime: 3000 };
+            debris.push(debrisItem);
+        }
+
+        function spawnEagle() {
+            if (level >= 2 && Math.random() < (level === 3 ? 0.15 : 0.1)) {
+                let eagleCount = level === 4 ? 2 : 1;
+                for (let i = 0; i < eagleCount; i++) {
+                    let eagle = { x: canvas.width / (window.devicePixelRatio || 1) + (i * 80), y: Math.random() * 150 + 50, width: 60, height: 40, speed: gameSpeed };
+                    eagles.push(eagle);
+                }
+            }
+        }
+
+        function spawnBarrel() {
+            if (level === 4) {
+                let barrel = { x: canvas.width / (window.devicePixelRatio || 1), y: groundY - 50, width: 50, height: 50, speed: gameSpeed + 2 };
+                barrels.push(barrel);
+            }
+        }
+
+        function spawnGap() {
+            if (level === 4) {
+                let gap = { x: canvas.width / (window.devicePixelRatio || 1), y: groundY, width: 20, height: 50, duration: 3000 };
+                gaps.push(gap);
+            }
+        }
+
+        function spawnThunderShock() {
+            if (level === 4) {
+                let thunder = { x: Math.random() * (canvas.width / (window.devicePixelRatio || 1)), y: groundY - 30, width: 30, height: 30, duration: 2000 };
+                thunderShocks.push(thunder);
+            }
+        }
+
         function drawSky() {
             const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height / (window.devicePixelRatio || 1));
             if (level === 1) {
                 gradient.addColorStop(0, '#87CEEB');
                 gradient.addColorStop(1, '#1E90FF');
-            } else {
+            } else if (level === 2) {
                 gradient.addColorStop(0, '#FF4500');
                 gradient.addColorStop(1, '#800080');
+            } else if (level === 3) {
+                gradient.addColorStop(0, '#000080');
+                gradient.addColorStop(1, '#1A1A1A');
+            } else {
+                gradient.addColorStop(0, '#4A2C7A');
+                gradient.addColorStop(1, '#1A1A1A');
             }
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+            if (level >= 3 && lightningDuration > 0) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.fillRect(0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+                lightningDuration -= 16;
+                if (isAudioInitialized) {
+                    try {
+                        crashSound.play().catch(e => console.error('Thunder sound failed to play:', e));
+                    } catch (e) {
+                        console.error('Thunder sound failed to play:', e);
+                    }
+                }
+            }
+            if (level === 4) {
+                ctx.fillStyle = 'rgba(128, 128, 128, 0.3)';
+                for (let i = 0; i < 50; i++) {
+                    ctx.fillRect(Math.random() * (canvas.width / (window.devicePixelRatio || 1)), Math.random() * (canvas.height / (window.devicePixelRatio || 1)), 2, 5);
+                }
+            }
         }
 
-        // Draw regular clouds
         function drawClouds() {
             clouds.forEach((cloud, index) => {
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
@@ -240,13 +243,10 @@
                 ctx.ellipse(cloud.x, cloud.y, cloud.width / 2, cloud.height / 2, 0, 0, Math.PI * 2);
                 ctx.fill();
                 cloud.x -= cloud.speed;
-                if (cloud.x < -cloud.width) {
-                    clouds.splice(index, 1);
-                }
+                if (cloud.x < -cloud.width) clouds.splice(index, 1);
             });
         }
 
-        // Draw coin clouds
         function drawCoinClouds() {
             coinClouds.forEach((coinCloud, index) => {
                 if (coinCloud.hasCoin) {
@@ -265,81 +265,209 @@
                     ctx.fillText('C', coinCloud.x, coinCloud.y);
                 }
                 coinCloud.x -= coinCloud.speed;
-                if (coinCloud.x < -coinCloud.width) {
-                    coinClouds.splice(index, 1);
-                }
+                if (coinCloud.x < -coinCloud.width) coinClouds.splice(index, 1);
             });
         }
 
-        // Rabbit drawing
-        function drawRabbit() {
+        function drawDebris() {
+            debris.forEach((item, index) => {
+                ctx.fillStyle = '#666666';
+                ctx.fillRect(item.x, item.y, item.width, item.height);
+                item.y += item.speed;
+                item.lifetime -= 16;
+                if (item.y > groundY || item.lifetime <= 0) debris.splice(index, 1);
+            });
+        }
+
+        function drawEagle(eagle) {
             ctx.fillStyle = '#8B4513';
             ctx.beginPath();
-            ctx.ellipse(rabbit.x, rabbit.y, rabbit.width / 2, rabbit.height / 1.5, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#8B4513';
-            ctx.beginPath();
-            ctx.arc(rabbit.x, rabbit.y - rabbit.height / 2, rabbit.width / 3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#8B4513';
-            ctx.beginPath();
-            ctx.moveTo(rabbit.x - 10, rabbit.y - rabbit.height / 1.5);
-            ctx.quadraticCurveTo(rabbit.x - 15, rabbit.y - rabbit.height - 10, rabbit.x - 10, rabbit.y - rabbit.height - 20);
-            ctx.quadraticCurveTo(rabbit.x - 5, rabbit.y - rabbit.height - 10, rabbit.x - 5, rabbit.y - rabbit.height / 1.5);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.moveTo(rabbit.x + 10, rabbit.y - rabbit.height / 1.5);
-            ctx.quadraticCurveTo(rabbit.x + 15, rabbit.y - rabbit.height - 10, rabbit.x + 10, rabbit.y - rabbit.height - 20);
-            ctx.quadraticCurveTo(rabbit.x + 5, rabbit.y - rabbit.height - 10, rabbit.x + 5, rabbit.y - rabbit.height / 1.5);
-            ctx.fill();
-            ctx.fillStyle = '#FFB6C1';
-            ctx.beginPath();
-            ctx.moveTo(rabbit.x - 8, rabbit.y - rabbit.height / 1.5);
-            ctx.quadraticCurveTo(rabbit.x - 13, rabbit.y - rabbit.height - 8, rabbit.x - 8, rabbit.y - rabbit.height - 15);
-            ctx.quadraticCurveTo(rabbit.x - 3, rabbit.y - rabbit.height - 8, rabbit.x - 3, rabbit.y - rabbit.height / 1.5);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.moveTo(rabbit.x + 8, rabbit.y - rabbit.height / 1.5);
-            ctx.quadraticCurveTo(rabbit.x + 13, rabbit.y - rabbit.height - 8, rabbit.x + 8, rabbit.y - rabbit.height - 15);
-            ctx.quadraticCurveTo(rabbit.x + 3, rabbit.y - rabbit.height - 8, rabbit.x + 3, rabbit.y - rabbit.height / 1.5);
-            ctx.fill();
-            ctx.fillStyle = '#FFFFFF';
-            ctx.beginPath();
-            ctx.arc(rabbit.x - 8, rabbit.y - rabbit.height / 1.8, 5, 0, Math.PI * 2);
-            ctx.arc(rabbit.x + 8, rabbit.y - rabbit.height / 1.8, 5, 0, Math.PI * 2);
+            ctx.ellipse(eagle.x, eagle.y, eagle.width / 2, eagle.height / 2, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#000000';
             ctx.beginPath();
-            ctx.arc(rabbit.x - 8, rabbit.y - rabbit.height / 1.8, 2, 0, Math.PI * 2);
-            ctx.arc(rabbit.x + 8, rabbit.y - rabbit.height / 1.8, 2, 0, Math.PI * 2);
+            ctx.moveTo(eagle.x + eagle.width / 2, eagle.y);
+            ctx.lineTo(eagle.x + eagle.width / 1.5, eagle.y - 10);
+            ctx.lineTo(eagle.x + eagle.width / 1.5, eagle.y + 10);
             ctx.fill();
-            ctx.fillStyle = '#FFB6C1';
+            ctx.fillStyle = '#8B4513';
             ctx.beginPath();
-            ctx.moveTo(rabbit.x, rabbit.y - rabbit.height / 2);
-            ctx.lineTo(rabbit.x - 3, rabbit.y - rabbit.height / 2 + 5);
-            ctx.lineTo(rabbit.x + 3, rabbit.y - rabbit.height / 2 + 5);
-            ctx.closePath();
+            ctx.moveTo(eagle.x - eagle.width / 2, eagle.y - 10);
+            ctx.lineTo(eagle.x - eagle.width / 1.5, eagle.y - 20);
+            ctx.lineTo(eagle.x - eagle.width / 2, eagle.y + 10);
             ctx.fill();
-            ctx.strokeStyle = '#000000';
-            ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(rabbit.x - 5, rabbit.y - rabbit.height / 2 + 5);
-            ctx.lineTo(rabbit.x - 15, rabbit.y - rabbit.height / 2 + 7);
-            ctx.moveTo(rabbit.x - 5, rabbit.y - rabbit.height / 2 + 3);
-            ctx.lineTo(rabbit.x - 13, rabbit.y - rabbit.height / 2 + 3);
-            ctx.moveTo(rabbit.x + 5, rabbit.y - rabbit.height / 2 + 5);
-            ctx.lineTo(rabbit.x + 15, rabbit.y - rabbit.height / 2 + 7);
-            ctx.moveTo(rabbit.x + 5, rabbit.y - rabbit.height / 2 + 3);
-            ctx.lineTo(rabbit.x + 13, rabbit.y - rabbit.height / 2 + 3);
-            ctx.stroke();
-            ctx.fillStyle = '#FFFFFF';
-            ctx.beginPath();
-            ctx.arc(rabbit.x + rabbit.width / 2 - 5, rabbit.y + rabbit.height / 4, 8, 0, Math.PI * 2);
+            ctx.moveTo(eagle.x - eagle.width / 2, eagle.y + 10);
+            ctx.lineTo(eagle.x - eagle.width / 1.5, eagle.y + 20);
+            ctx.lineTo(eagle.x - eagle.width / 2, eagle.y - 10);
             ctx.fill();
         }
 
-        // Obstacle drawing (carrots for level 1, rocks for level 2)
-        function drawObstacle(x, y, width, height) {
+        function drawBarrel(barrel) {
+            ctx.fillStyle = '#8B4513';
+            ctx.beginPath();
+            ctx.ellipse(barrel.x, barrel.y, barrel.width / 2, barrel.height / 2, 0, Math.PI / 2, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawGap(gap) {
+            ctx.clearRect(gap.x, gap.y, gap.width, gap.height);
+        }
+
+        function drawThunderShock(thunder) {
+            ctx.fillStyle = '#FFFF00';
+            ctx.fillRect(thunder.x, thunder.y, thunder.width, thunder.height);
+        }
+
+        function drawRabbit() {
+            let x = rabbit.x, y = rabbit.y, w = rabbit.width, h = rabbit.height;
+            if (rabbit.avatar === 1) { // Classic brown
+                ctx.fillStyle = '#8B4513';
+                ctx.beginPath();
+                ctx.ellipse(x, y, w / 2, h / 1.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#8B4513';
+                ctx.beginPath();
+                ctx.arc(x, y - h / 2, w / 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#8B4513';
+                ctx.beginPath();
+                ctx.moveTo(x - 10, y - h / 1.5);
+                ctx.quadraticCurveTo(x - 15, y - h - 10, x - 10, y - h - 20);
+                ctx.quadraticCurveTo(x - 5, y - h - 10, x - 5, y - h / 1.5);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(x + 10, y - h / 1.5);
+                ctx.quadraticCurveTo(x + 15, y - h - 10, x + 10, y - h - 20);
+                ctx.quadraticCurveTo(x + 5, y - h - 10, x + 5, y - h / 1.5);
+                ctx.fill();
+                ctx.fillStyle = '#FFB6C1';
+                ctx.beginPath();
+                ctx.moveTo(x - 8, y - h / 1.5);
+                ctx.quadraticCurveTo(x - 13, y - h - 8, x - 8, y - h - 15);
+                ctx.quadraticCurveTo(x - 3, y - h - 8, x - 3, y - h / 1.5);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(x + 8, y - h / 1.5);
+                ctx.quadraticCurveTo(x + 13, y - h - 8, x + 8, y - h - 15);
+                ctx.quadraticCurveTo(x + 3, y - h - 8, x + 3, y - h / 1.5);
+                ctx.fill();
+                ctx.fillStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.arc(x - 8, y - h / 1.8, 5, 0, Math.PI * 2);
+                ctx.arc(x + 8, y - h / 1.8, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.arc(x - 8, y - h / 1.8, 2, 0, Math.PI * 2);
+                ctx.arc(x + 8, y - h / 1.8, 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#FFB6C1';
+                ctx.beginPath();
+                ctx.moveTo(x, y - h / 2);
+                ctx.lineTo(x - 3, y - h / 2 + 5);
+                ctx.lineTo(x + 3, y - h / 2 + 5);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x - 5, y - h / 2 + 5);
+                ctx.lineTo(x - 15, y - h / 2 + 7);
+                ctx.moveTo(x - 5, y - h / 2 + 3);
+                ctx.lineTo(x - 13, y - h / 2 + 3);
+                ctx.moveTo(x + 5, y - h / 2 + 5);
+                ctx.lineTo(x + 15, y - h / 2 + 7);
+                ctx.moveTo(x + 5, y - h / 2 + 3);
+                ctx.lineTo(x + 13, y - h / 2 + 3);
+                ctx.stroke();
+                ctx.fillStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.arc(x + w / 2 - 5, y + h / 4, 8, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (rabbit.avatar === 2) { // White with red
+                ctx.fillStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.ellipse(x, y, w / 2, h / 1.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#FF0000';
+                ctx.beginPath();
+                ctx.moveTo(x - 10, y - h / 1.5);
+                ctx.quadraticCurveTo(x - 15, y - h - 10, x - 10, y - h - 20);
+                ctx.quadraticCurveTo(x - 5, y - h - 10, x - 5, y - h / 1.5);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(x + 10, y - h / 1.5);
+                ctx.quadraticCurveTo(x + 15, y - h - 10, x + 10, y - h - 20);
+                ctx.quadraticCurveTo(x + 5, y - h - 10, x + 5, y - h / 1.5);
+                ctx.fill();
+                ctx.fillStyle = '#FF0000';
+                ctx.beginPath();
+                ctx.arc(x, y - h / 2, w / 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.arc(x - 8, y - h / 1.8, 5, 0, Math.PI * 2);
+                ctx.arc(x + 8, y - h / 1.8, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.arc(x - 8, y - h / 1.8, 2, 0, Math.PI * 2);
+                ctx.arc(x + 8, y - h / 1.8, 2, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (rabbit.avatar === 3) { // Black with yellow eyes
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.ellipse(x, y, w / 2, h / 1.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#FFFF00';
+                ctx.beginPath();
+                ctx.arc(x - 8, y - h / 1.8, 5, 0, Math.PI * 2);
+                ctx.arc(x + 8, y - h / 1.8, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                ctx.arc(x - 8, y - h / 1.8, 2, 0, Math.PI * 2);
+                ctx.arc(x + 8, y - h / 1.8, 2, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (rabbit.avatar === 4) { // Gray with green
+                ctx.fillStyle = '#808080';
+                ctx.beginPath();
+                ctx.ellipse(x, y, w / 2, h / 1.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#00FF00';
+                ctx.beginPath();
+                ctx.moveTo(x - 10, y - h / 1.5);
+                ctx.quadraticCurveTo(x - 15, y - h - 10, x - 10, y - h - 20);
+                ctx.quadraticCurveTo(x - 5, y - h - 10, x - 5, y - h / 1.5);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(x + 10, y - h / 1.5);
+                ctx.quadraticCurveTo(x + 15, y - h - 10, x + 10, y - h - 20);
+                ctx.quadraticCurveTo(x + 5, y - h - 10, x + 5, y - h / 1.5);
+                ctx.fill();
+            }
+        }
+
+        function drawSplashScreen() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+            ctx.fillStyle = '#FF00FF';
+            ctx.font = `60px Comic Sans MS`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.save();
+            ctx.translate((canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 - 50);
+            ctx.rotate(Math.sin(Date.now() / 500) / 10);
+            ctx.fillText('Rabbit Runner', 0, 0);
+            ctx.restore();
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = `30px Arial`;
+            ctx.fillText('Tap to Start', (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 + 50);
+            ctx.fillText(`Avatar: ${selectedAvatar}`, (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 + 100);
+        }
+
+        function drawObstacle(x, y, width, height, isSpiked = false) {
             if (level === 1) {
                 ctx.fillStyle = '#FFA500';
                 ctx.beginPath();
@@ -350,34 +478,73 @@
                 ctx.fill();
                 ctx.fillStyle = '#008000';
                 ctx.fillRect(x + width / 4, y - height - 10, width / 2, 10);
-            } else {
+            } else if (level === 2 || level === 3) {
                 ctx.fillStyle = '#808080';
                 ctx.beginPath();
                 ctx.roundRect(x, y - height, width, height, 5);
                 ctx.fill();
+                if (isSpiked && level === 3) {
+                    ctx.fillStyle = '#FF0000';
+                    ctx.beginPath();
+                    ctx.moveTo(x, y - height);
+                    ctx.lineTo(x + width / 4, y - height - 10);
+                    ctx.lineTo(x + width / 2, y - height);
+                    ctx.lineTo(x + 3 * width / 4, y - height - 10);
+                    ctx.lineTo(x + width, y - height);
+                    ctx.fill();
+                }
+            } else if (level === 4) {
+                ctx.fillStyle = '#A52A2A';
+                ctx.beginPath();
+                ctx.roundRect(x, y - height, width, height, 10);
+                ctx.fill();
             }
         }
 
-        // Obstacle generation
+        function drawMovingPlatform(x, y, width, height) {
+            ctx.fillStyle = '#A52A2A';
+            ctx.fillRect(x, y, width, height);
+        }
+
+        function drawFog(x, y, width, height) {
+            ctx.fillStyle = 'rgba(128, 128, 128, 0.5)';
+            ctx.fillRect(x, y, width, height);
+        }
+
         function spawnObstacle() {
             let obstacle = {
                 x: canvas.width / (window.devicePixelRatio || 1),
                 y: groundY,
-                width: level === 1 ? 20 : 30,
-                height: level === 1 ? 40 : 30
+                width: level === 1 ? 20 : (level === 2 ? 30 : 40),
+                height: level === 1 ? 40 : (level === 2 ? 30 : 40),
+                isSpiked: level === 3 && Math.random() < 0.5,
+                type: level === 3 && Math.random() < 0.3 ? 'platform' : 'obstacle'
             };
+            if (level === 4 && Math.random() < 0.3) {
+                obstacles.push({ ...obstacle, x: obstacle.x + 40 });
+                obstacles.push({ ...obstacle, x: obstacle.x + 80 });
+            }
             obstacles.push(obstacle);
         }
 
-        // Draw splash screen
-        function drawSplashScreen() {
+        function drawSplashScreenLevel() {
             ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
             ctx.fillRect(0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
             ctx.fillStyle = '#FFFFFF';
             ctx.font = `40px Arial`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('Level 2 Unlocked! Bonus: 1000 Points', (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2);
+            if (level === 2) {
+                ctx.fillText(`Level 2 Unlocked! Bonus: 1000 Points`, (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 - 20);
+                ctx.font = `30px Arial`;
+                ctx.fillText(`Progress: ${level2Score}/1000`, (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 + 20);
+            } else if (level === 3) {
+                ctx.fillText(`Level 3 Unlocked! Bonus: 50 Points`, (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 - 20);
+                ctx.font = `30px Arial`;
+                ctx.fillText(`Progress: ${level3Score}/1500`, (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 + 20);
+            } else if (level === 4) {
+                ctx.fillText(`Level 4 Unlocked! Bonus: 75 Points`, (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2);
+            }
             if (isAudioInitialized && splashScreenTimer >= 2900) {
                 try {
                     console.log('Attempting to play level up sound:', levelUpSound.src);
@@ -388,18 +555,27 @@
             }
         }
 
-        // Game loop
         let lastTime = 0;
         let obstacleTimer = 0;
         let cloudTimer = 0;
         let coinCloudTimer = 0;
+        let debrisTimer = 0;
+        let fogTimer = 0;
+        let movingPlatforms = [];
+        let fogPatches = [];
+
         function gameLoop(timestamp) {
             if (gameOver) {
                 ctx.fillStyle = 'black';
                 ctx.font = `30px Arial`;
                 ctx.textAlign = 'center';
-                ctx.fillText('Game Over! Score: ' + Math.floor(score), (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2);
-                ctx.fillText('Tap or press SPACE to restart', (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 + 40);
+                ctx.fillText(`Game Over! Score: ${Math.floor(score)}`, (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 - 40);
+                ctx.fillText(`High Scores - ${username}:`, (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2);
+                ctx.font = `20px Arial`;
+                for (let lvl in highScores) {
+                    ctx.fillText(`Level ${lvl}: ${highScores[lvl]}`, (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 + 20 * (lvl - 1));
+                }
+                ctx.fillText('Tap or press SPACE to restart', (canvas.width / (window.devicePixelRatio || 1)) / 2, (canvas.height / (window.devicePixelRatio || 1)) / 2 + 100);
                 try {
                     currentBackgroundMusic.pause();
                     isBackgroundMusicPlaying = false;
@@ -411,8 +587,14 @@
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            drawSky();
-            if (!showSplashScreen) {
+            if (showSplashScreen) {
+                drawSplashScreen();
+                splashScreenTimer -= timestamp - lastTime;
+                if (splashScreenTimer <= 0 || !isNaN(selectedAvatar)) {
+                    showSplashScreen = false;
+                }
+            } else {
+                drawSky();
                 cloudTimer += timestamp - lastTime;
                 if (cloudTimer > 2000) {
                     spawnCloud();
@@ -434,7 +616,9 @@
                         rabbit.y - rabbit.height / 2 < coinCloud.y + coinCloud.height / 2
                     ) {
                         coinCloud.hasCoin = false;
-                        score += 50;
+                        score += level === 4 ? 100 : (level === 3 ? 75 : 50);
+                        if (level === 2) level2Score += level === 4 ? 100 : (level === 3 ? 75 : 50);
+                        else if (level === 3) level3Score += level === 4 ? 100 : (level === 3 ? 75 : 50);
                         scoreFlash = 30;
                         if (isAudioInitialized) {
                             try {
@@ -450,6 +634,26 @@
                 groundY = (canvas.height / (window.devicePixelRatio || 1)) - 50;
                 ctx.fillStyle = '#654321';
                 ctx.fillRect(0, groundY, canvas.width / (window.devicePixelRatio || 1), 50);
+                gaps.forEach((gap, index) => {
+                    drawGap(gap);
+                    gap.x -= gameSpeed;
+                    gap.duration -= 16;
+                    if (gap.x < -gap.width || gap.duration <= 0) gaps.splice(index, 1);
+                    if (
+                        rabbit.x + rabbit.width / 2 > gap.x &&
+                        rabbit.x - rabbit.width / 2 < gap.x + gap.width &&
+                        rabbit.y + rabbit.height / 2 > gap.y
+                    ) {
+                        lives--;
+                        if (lives <= 0) gameOver = true;
+                        else {
+                            rabbit.y = groundY - rabbit.height / 2;
+                            rabbit.velocityY = 0;
+                            rabbit.isJumping = false;
+                            gaps = [];
+                        }
+                    }
+                });
 
                 rabbit.y = Math.min(rabbit.y + rabbit.velocityY, groundY - rabbit.height / 2);
                 rabbit.velocityY += gravity;
@@ -465,97 +669,336 @@
                     obstacleTimer = 0;
                 }
                 obstacles.forEach((obstacle, index) => {
-                    obstacle.x -= gameSpeed;
-                    drawObstacle(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                    if (obstacle.type === 'platform') {
+                        obstacle.x -= gameSpeed;
+                        drawMovingPlatform(obstacle.x, obstacle.y - 10, obstacle.width, obstacle.height);
+                        if (obstacle.x + obstacle.width < 0) obstacles.splice(index, 1);
+                    } else {
+                        obstacle.x -= gameSpeed;
+                        drawObstacle(obstacle.x, obstacle.y, obstacle.width, obstacle.height, obstacle.isSpiked);
+                        if (
+                            rabbit.x + rabbit.width / 2 > obstacle.x &&
+                            rabbit.x - rabbit.width / 2 < obstacle.x + obstacle.width &&
+                            rabbit.y + rabbit.height / 2 > obstacle.y - obstacle.height &&
+                            (level === 3 && obstacle.isSpiked ? true : rabbit.y + rabbit.height / 2 > obstacle.y - obstacle.height / 2)
+                        ) {
+                            lives--;
+                            if (lives <= 0) {
+                                gameOver = true;
+                                if (isAudioInitialized) {
+                                    try {
+                                        console.log('Attempting to play crash sound:', crashSound.src);
+                                        crashSound.play().catch(e => console.error('Crash sound failed to play:', e));
+                                    } catch (e) {
+                                        console.error('Crash sound failed to play:', e);
+                                    }
+                                }
+                            } else {
+                                rabbit.y = groundY - rabbit.height / 2;
+                                rabbit.velocityY = 0;
+                                rabbit.isJumping = false;
+                                obstacles = [];
+                                if (isAudioInitialized) {
+                                    try {
+                                        console.log('Attempting to play crash sound:', crashSound.src);
+                                        crashSound.play().catch(e => console.error('Crash sound failed to play:', e));
+                                    } catch (e) {
+                                        console.error('Crash sound failed to play:', e);
+                                    }
+                                }
+                            }
+                        }
+                        if (obstacle.x < -obstacle.width) {
+                            obstacles.splice(index, 1);
+                            score += level === 4 ? 20 : (level === 3 ? 15 : 10);
+                            if (level === 2) level2Score += level === 4 ? 20 : (level === 3 ? 15 : 10);
+                            else if (level === 3) level3Score += level === 4 ? 20 : (level === 3 ? 15 : 10);
+                            scoreFlash = 30;
+                        }
+                    }
+                });
+
+                debrisTimer += timestamp - lastTime;
+                if (debrisTimer > 5000 && level === 3) {
+                    spawnDebris();
+                    debrisTimer = 0;
+                }
+                drawDebris();
+
+                fogTimer += timestamp - lastTime;
+                if (fogTimer > 7000 && level === 3) {
+                    let fog = { x: canvas.width / (window.devicePixelRatio || 1), y: groundY - 100, width: 100, height: 50, duration: 2000 };
+                    fogPatches.push(fog);
+                    fogTimer = 0;
+                }
+                fogPatches.forEach((fog, index) => {
+                    drawFog(fog.x, fog.y, fog.width, fog.height);
+                    fog.x -= gameSpeed;
+                    fog.duration -= 16;
+                    if (fog.x < -fog.width || fog.duration <= 0) fogPatches.splice(index, 1);
                     if (
-                        rabbit.x + rabbit.width / 2 > obstacle.x &&
-                        rabbit.x - rabbit.width / 2 < obstacle.x + obstacle.width &&
-                        rabbit.y + rabbit.height / 2 > obstacle.y - obstacle.height
+                        rabbit.x + rabbit.width / 2 > fog.x &&
+                        rabbit.x - rabbit.width / 2 < fog.x + fog.width &&
+                        rabbit.y + rabbit.height / 2 > fog.y &&
+                        rabbit.y - rabbit.height / 2 < fog.y + fog.height
                     ) {
-                        gameOver = true;
-                        if (isAudioInitialized) {
-                            try {
-                                console.log('Attempting to play crash sound:', crashSound.src);
-                                crashSound.play().catch(e => console.error('Crash sound failed to play:', e));
-                            } catch (e) {
-                                console.error('Crash sound failed to play:', e);
+                        ctx.fillStyle = 'rgba(128, 128, 128, 0.5)';
+                        ctx.fillRect(0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+                    }
+                });
+
+                eagleTimer += timestamp - lastTime;
+                if (eagleTimer > (level === 4 ? 8000 : 10000)) {
+                    spawnEagle();
+                    eagleTimer = 0;
+                }
+                eagles.forEach((eagle, index) => {
+                    drawEagle(eagle);
+                    eagle.x -= eagle.speed;
+                    if (eagle.x < -eagle.width) eagles.splice(index, 1);
+                    if (
+                        rabbit.isJumping &&
+                        rabbit.y - rabbit.height / 2 < 200 &&
+                        rabbit.x + rabbit.width / 2 > eagle.x - eagle.width / 2 &&
+                        rabbit.x - rabbit.width / 2 < eagle.x + eagle.width / 2
+                    ) {
+                        lives--;
+                        if (lives <= 0) {
+                            gameOver = true;
+                            if (isAudioInitialized) {
+                                try {
+                                    console.log('Attempting to play crash sound:', crashSound.src);
+                                    crashSound.play().catch(e => console.error('Crash sound failed to play:', e));
+                                } catch (e) {
+                                    console.error('Crash sound failed to play:', e);
+                                }
+                            }
+                        } else {
+                            rabbit.y = groundY - rabbit.height / 2;
+                            rabbit.velocityY = 0;
+                            rabbit.isJumping = false;
+                            eagles = [];
+                            if (isAudioInitialized) {
+                                try {
+                                    console.log('Attempting to play crash sound:', crashSound.src);
+                                    crashSound.play().catch(e => console.error('Crash sound failed to play:', e));
+                                } catch (e) {
+                                    console.error('Crash sound failed to play:', e);
+                                }
                             }
                         }
                     }
-                    if (obstacle.x < -obstacle.width) {
-                        obstacles.splice(index, 1);
-                        score += 10;
-                        scoreFlash = 30;
-                    }
                 });
-            }
 
-            if (score >= 500 && level === 1 && !showSplashScreen) {
-                showSplashScreen = true;
-                splashScreenTimer = 3000;
-                score += 1000;
-                level = 2;
-                gameSpeed = 7;
-                obstacleSpawnInterval = 1200;
-                obstacles = [];
-                coinClouds = [];
-                rabbit.y = groundY - rabbit.height / 2;
-                rabbit.velocityY = 0;
-                rabbit.isJumping = false;
-                if (isAudioInitialized) {
-                    playBackgroundMusic(2);
+                barrelTimer += timestamp - lastTime;
+                if (barrelTimer > 7000 && level === 4) {
+                    spawnBarrel();
+                    barrelTimer = 0;
                 }
-            }
+                barrels.forEach((barrel, index) => {
+                    drawBarrel(barrel);
+                    barrel.x -= barrel.speed;
+                    if (
+                        rabbit.x + rabbit.width / 2 > barrel.x &&
+                        rabbit.x - rabbit.width / 2 < barrel.x + barrel.width &&
+                        rabbit.y + rabbit.height / 2 > barrel.y - barrel.height / 2
+                    ) {
+                        lives--;
+                        if (lives <= 0) gameOver = true;
+                        else {
+                            rabbit.y = groundY - rabbit.height / 2;
+                            rabbit.velocityY = 0;
+                            rabbit.isJumping = false;
+                            barrels = [];
+                        }
+                    }
+                    if (barrel.x < -barrel.width) barrels.splice(index, 1);
+                });
 
-            if (showSplashScreen) {
-                drawSplashScreen();
-                splashScreenTimer -= timestamp - lastTime;
-                if (splashScreenTimer <= 0) {
-                    showSplashScreen = false;
+                gapTimer += timestamp - lastTime;
+                if (gapTimer > 15000 && level === 4) {
+                    spawnGap();
+                    gapTimer = 0;
                 }
-            }
 
-            ctx.font = `30px Arial`;
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            if (scoreFlash > 0) {
-                ctx.fillStyle = scoreFlash % 10 < 5 ? '#FF0000' : '#000000';
-                scoreFlash--;
-            } else {
-                ctx.fillStyle = '#000000';
+                thunderTimer += timestamp - lastTime;
+                if (thunderTimer > 7000 && level === 4) {
+                    spawnThunderShock();
+                    thunderTimer = 0;
+                }
+                thunderShocks.forEach((thunder, index) => {
+                    drawThunderShock(thunder);
+                    thunder.duration -= 16;
+                    if (
+                        rabbit.x + rabbit.width / 2 > thunder.x &&
+                        rabbit.x - rabbit.width / 2 < thunder.x + thunder.width &&
+                        rabbit.y + rabbit.height / 2 > thunder.y
+                    ) {
+                        lives--;
+                        if (lives <= 0) gameOver = true;
+                        else {
+                            rabbit.y = groundY - rabbit.height / 2;
+                            rabbit.velocityY = 0;
+                            rabbit.isJumping = false;
+                            thunderShocks = [];
+                        }
+                    }
+                    if (thunder.duration <= 0) thunderShocks.splice(index, 1);
+                });
+
+                if (level === 3) {
+                    if (timestamp - lastLightning > 10000) {
+                        lastLightning = timestamp;
+                        lightningDuration = 500;
+                    }
+                } else if (level === 4) {
+                    if (timestamp - lastLightning > 5000) {
+                        lastLightning = timestamp;
+                        lightningDuration = 500;
+                    }
+                }
+
+                if (score >= 500 && level === 1 && !showSplashScreen && score < 1000) {
+                    showSplashScreen = true;
+                    splashScreenTimer = 3000;
+                    score += 1000;
+                    level = 2;
+                    gameSpeed = 7;
+                    obstacleSpawnInterval = 1200;
+                    lives = 2;
+                    obstacles = [];
+                    coinClouds = [];
+                    debris = [];
+                    fogPatches = [];
+                    movingPlatforms = [];
+                    eagles = [];
+                    barrels = [];
+                    gaps = [];
+                    thunderShocks = [];
+                    rabbit.y = groundY - rabbit.height / 2;
+                    rabbit.velocityY = 0;
+                    rabbit.isJumping = false;
+                    if (isAudioInitialized) playBackgroundMusic();
+                    if (score > highScores[1]) {
+                        highScores[1] = score;
+                        localStorage.setItem(`highScores_${username}`, JSON.stringify(highScores));
+                    }
+                } else if (level2Score >= 1000 && level === 2 && !showSplashScreen) {
+                    showSplashScreen = true;
+                    splashScreenTimer = 3000;
+                    score += 50;
+                    level = 3;
+                    gameSpeed = 10;
+                    obstacleSpawnInterval = 800;
+                    lives = 2;
+                    obstacles = [];
+                    coinClouds = [];
+                    debris = [];
+                    fogPatches = [];
+                    movingPlatforms = [];
+                    eagles = [];
+                    barrels = [];
+                    gaps = [];
+                    thunderShocks = [];
+                    rabbit.y = groundY - rabbit.height / 2;
+                    rabbit.velocityY = 0;
+                    rabbit.isJumping = false;
+                    if (isAudioInitialized) playBackgroundMusic();
+                    if (score > highScores[2]) {
+                        highScores[2] = score;
+                        localStorage.setItem(`highScores_${username}`, JSON.stringify(highScores));
+                    }
+                } else if (level3Score >= 1500 && level === 3 && !showSplashScreen) {
+                    showSplashScreen = true;
+                    splashScreenTimer = 3000;
+                    score += 75;
+                    level = 4;
+                    gameSpeed = 13;
+                    obstacleSpawnInterval = 600;
+                    lives = 2;
+                    obstacles = [];
+                    coinClouds = [];
+                    debris = [];
+                    fogPatches = [];
+                    movingPlatforms = [];
+                    eagles = [];
+                    barrels = [];
+                    gaps = [];
+                    thunderShocks = [];
+                    rabbit.y = groundY - rabbit.height / 2;
+                    rabbit.velocityY = 0;
+                    rabbit.isJumping = false;
+                    if (isAudioInitialized) playBackgroundMusic();
+                    if (score > highScores[3]) {
+                        highScores[3] = score;
+                        localStorage.setItem(`highScores_${username}`, JSON.stringify(highScores));
+                    }
+                }
+
+                if (showSplashScreen && level > 1) {
+                    drawSplashScreenLevel();
+                    splashScreenTimer -= timestamp - lastTime;
+                    if (splashScreenTimer <= 0) {
+                        showSplashScreen = false;
+                    }
+                }
+
+                ctx.font = `30px Arial`;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                if (scoreFlash > 0) {
+                    ctx.fillStyle = scoreFlash % 10 < 5 ? '#FF0000' : '#000000';
+                    scoreFlash--;
+                } else {
+                    ctx.fillStyle = '#000000';
+                }
+                ctx.fillText(`Score: ${Math.floor(score)} | Level: ${level} | Lives: ${lives + 1} | High: ${highScores[level]}`, 10, 30);
             }
-            ctx.fillText('Score: ' + Math.floor(score) + ' | Level: ' + level, 10, 30);
 
             lastTime = timestamp;
             requestAnimationFrame(gameLoop);
         }
 
-        // Input handling (keyboard and touch)
         function handleInput() {
             if (gameOver) {
                 obstacles = [];
                 clouds = [];
                 coinClouds = [];
+                debris = [];
+                fogPatches = [];
+                movingPlatforms = [];
+                eagles = [];
+                barrels = [];
+                gaps = [];
+                thunderShocks = [];
                 score = 0;
+                level2Score = 0;
+                level3Score = 0;
                 gameSpeed = 5;
                 obstacleSpawnInterval = 1500;
                 level = 1;
+                lives = 2;
                 gameOver = false;
-                showSplashScreen = false;
+                showSplashScreen = true;
+                splashScreenTimer = 3000;
                 rabbit.y = groundY - rabbit.height / 2;
                 rabbit.velocityY = 0;
                 scoreFlash = 0;
-                if (isAudioInitialized) {
-                    playBackgroundMusic(1);
-                }
+                if (isAudioInitialized) playBackgroundMusic();
                 requestAnimationFrame(gameLoop);
+            } else if (showSplashScreen) {
+                selectedAvatar = (selectedAvatar % 4) + 1; // Cycle through avatars 1-4
+                localStorage.setItem('rabbitRunnerAvatar', selectedAvatar);
+                rabbit.avatar = selectedAvatar;
+                showSplashScreen = splashScreenTimer > 0; // Keep splash until timer runs out
+                if (isAudioInitialized && splashScreenTimer <= 0) playBackgroundMusic();
             } else if (!rabbit.isJumping && !showSplashScreen) {
                 rabbit.velocityY = -rabbit.jumpForce;
                 rabbit.isJumping = true;
-                requestFullscreen(); // Request fullscreen on first interaction
+                requestFullscreen();
                 initializeAudio();
                 if (!isBackgroundMusicPlaying) {
-                    playBackgroundMusic(level);
+                    playBackgroundMusic();
                 }
                 if (isAudioInitialized) {
                     try {
@@ -570,18 +1013,17 @@
 
         document.addEventListener('keydown', (e) => {
             if (e.code === 'Space') {
-                e.preventDefault(); // Prevent scrolling on space
+                e.preventDefault();
                 handleInput();
             }
         });
 
         document.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // Prevent default touch behavior
+            e.preventDefault();
             console.log('Touchstart triggered');
             handleInput();
         });
 
-        // Start game
         requestAnimationFrame(gameLoop);
     </script>
 </body>
